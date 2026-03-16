@@ -1,0 +1,8 @@
+## Interface: 20505
+## Title: MacroSpellBook
+## Version: 1.0.0
+## Notes: Custom spellbook that creates macros from templates when dragging spells to action bars.
+## Author: shadowgrind
+## SavedVariables: MacroSpellBookDB
+
+MacroSpellBook.lua
