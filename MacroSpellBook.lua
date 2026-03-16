@@ -82,27 +82,20 @@ local function CreateAndPickupMacro(spellName)
     local macroName  = (rawName ~= "" and rawName or "."):sub(1, 16)
     local tPerChar   = MacroSpellBookDB.templatePerChar
     local perChar    = (tPerChar == nil) or (tPerChar[MSB.selectedTemplate] ~= false)
-    local macroIndex = GetMacroIndexByName(macroName)
-
-    if macroIndex > 0 then
-        EditMacro(macroIndex, macroName, nil, macroBody)
-    else
-        local numGlobal, numChar = GetNumMacros()
-        if perChar and numChar >= 18 then
-            UIErrorsFrame:AddMessage(
-                "|cffff0000MacroSpellBook:|r Charakter-Macro-Limit (18) erreicht.", 1, 0, 0)
-            return
-        elseif not perChar and numGlobal >= 120 then
-            UIErrorsFrame:AddMessage(
-                "|cffff0000MacroSpellBook:|r Globales Macro-Limit (120) erreicht.", 1, 0, 0)
-            return
-        else
-            -- perChar=true  -> charakter-spezifisch (letzter Param = 1)
-            -- perChar=false -> global              (letzter Param = nil)
-            CreateMacro(macroName, "INV_Misc_QuestionMark", macroBody, perChar or nil)
-            macroIndex = GetMacroIndexByName(macroName)
-        end
+    local numGlobal, numChar = GetNumMacros()
+    if perChar and numChar >= 18 then
+        UIErrorsFrame:AddMessage(
+            "|cffff0000MacroSpellBook:|r Charakter-Macro-Limit (18) erreicht.", 1, 0, 0)
+        return
+    elseif not perChar and numGlobal >= 120 then
+        UIErrorsFrame:AddMessage(
+            "|cffff0000MacroSpellBook:|r Globales Macro-Limit (120) erreicht.", 1, 0, 0)
+        return
     end
+
+    -- perChar=true  -> charakter-spezifisch (letzter Param = 1)
+    -- perChar=false -> global              (letzter Param = nil)
+    local macroIndex = CreateMacro(macroName, "INV_Misc_QuestionMark", macroBody, perChar or nil)
 
     if macroIndex and macroIndex > 0 then
         PickupMacro(macroIndex)
@@ -688,3 +681,20 @@ SlashCmdList["MACROSPELLBOOK"] = function()
         MSB.mainFrame:Show()
     end
 end
+
+-- ============================================================
+-- Spellbook-Hook: MSB automatisch mit dem Standard-Zauberbuch oeffnen/schliessen
+-- ============================================================
+
+SpellBookFrame:HookScript("OnShow", function()
+    if not MSB.mainFrame then
+        CreateMainFrame()
+    end
+    MSB.mainFrame:Show()
+end)
+
+SpellBookFrame:HookScript("OnHide", function()
+    if MSB.mainFrame then
+        MSB.mainFrame:Hide()
+    end
+end)
