@@ -5,6 +5,7 @@
 
 local ADDON_NAME   = "MacroSpellBook"
 local MACRO_PREFIX = "MSB_"
+local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 
 -- Grid
 local ICON_SIZE     = 40
@@ -13,26 +14,47 @@ local ICONS_PER_ROW = 6
 
 -- Hauptfenster
 local FRAME_WIDTH   = 360
-local FRAME_HEIGHT  = 520
+local FRAME_HEIGHT  = 548
 
 MacroSpellBookDB = nil
 
 local DEFAULT_TEMPLATES = {
-    ["Start Attack"] = "#showtooltip\n/startattack\n/cast %s",
+    ["Start Attack"]                    = "#showtooltip\n/startattack\n/cast %s",
+    ["Start pet & own attack"]          = "#showtooltip\n/startattack\n/petattack\n/cast %s",
+    ["Always highest available Spellrank"] = "#showtooltip\n/cast %s",
+}
+
+-- Bekannte Profession-Tab-Namen in TBC (englisch)
+local PROFESSION_TABS = {
+    ["Herbalism"]       = true,
+    ["Mining"]          = true,
+    ["Skinning"]        = true,
+    ["Alchemy"]         = true,
+    ["Blacksmithing"]   = true,
+    ["Enchanting"]      = true,
+    ["Engineering"]     = true,
+    ["Leatherworking"]  = true,
+    ["Tailoring"]       = true,
+    ["Jewelcrafting"]   = true,
+    ["First Aid"]       = true,
+    ["Cooking"]         = true,
+    ["Fishing"]         = true,
 }
 
 local MSB = {
-    selectedTemplate = "Start Attack",
-    spellButtons     = {},
-    templateDropdown = nil,
-    mainFrame        = nil,
-    scrollFrame      = nil,
-    scrollChild      = nil,
-    searchBox        = nil,
-    tabButtons       = {},
-    activeTab        = 1,   -- 1-basiert in MSB.tabs; 0 = "Alle"
-    searchText       = "",
-    tabs             = {},  -- { {name, texture, spells=[{name,texture,slot}]} }
+    selectedTemplate  = "Start Attack",
+    spellButtons      = {},
+    templateDropdown  = nil,
+    mainFrame         = nil,
+    scrollFrame       = nil,
+    scrollChild       = nil,
+    searchBox         = nil,
+    tabButtons        = {},
+    activeTab         = 1,   -- 1-basiert in MSB.tabs; 0 = "Alle"
+    searchText        = "",
+    tabs              = {},  -- { {name, texture, spells=[{name,texture,slot,tabName}]} }
+    hidePassive       = true,
+    hideProfessions   = true,
 }
 
 -- ============================================================
@@ -47,8 +69,14 @@ local function SetTemplate(name, body)
     MacroSpellBookDB.templates[name] = body
 end
 
+local DEFAULT_TEMPLATE_NAMES = {
+    ["Start Attack"]                       = true,
+    ["Start pet & own attack"]             = true,
+    ["Always highest available Spellrank"] = true,
+}
+
 local function DeleteTemplate(name)
-    if name == "Start Attack" then
+    if DEFAULT_TEMPLATE_NAMES[name] then
         UIErrorsFrame:AddMessage(
             "|cffff0000MacroSpellBook:|r Das Standard-Template kann nicht geloescht werden.", 1, 0, 0)
         return false
@@ -107,29 +135,92 @@ end
 -- ============================================================
 
 local function GetSpellTabs()
-    local tabs    = {}
-    local numTabs = GetNumSpellTabs()
-    for ti = 1, numTabs do
-        local tabName, tabTexture, offset, numSlots = GetSpellTabInfo(ti)
-        local spells = {}
-        local seen   = {}
-        for si = offset + 1, offset + numSlots do
-            local spellName = GetSpellBookItemName(si, BOOKTYPE_SPELL)
-            local spellType = GetSpellBookItemInfo(si, BOOKTYPE_SPELL)
-            local texture   = GetSpellBookItemTexture(si, BOOKTYPE_SPELL)
-            if spellName and spellType == "SPELL" then
-                if seen[spellName] then
-                    -- hoeheren Rang (spaeterer Slot) bevorzugen
-                    seen[spellName].slot    = si
-                    seen[spellName].texture = texture
-                else
-                    local e = {name = spellName, texture = texture, slot = si}
-                    table.insert(spells, e)
-                    seen[spellName] = e
+    local tabs = {}
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines
+       and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo then
+        local spellBank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+        local spellType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or 1
+        local numTabs = C_SpellBook.GetNumSpellBookSkillLines()
+        for ti = 1, numTabs do
+            local tabInfo = C_SpellBook.GetSpellBookSkillLineInfo(ti)
+            if tabInfo then
+                local tabName = tabInfo.name
+                if not (MSB.hideProfessions and PROFESSION_TABS[tabName]) then
+                    local spells = {}
+                    local seen = {}
+                    local firstSlot = tabInfo.itemIndexOffset + 1
+                    local lastSlot = tabInfo.itemIndexOffset + tabInfo.numSpellBookItems
+                    for si = firstSlot, lastSlot do
+                        local item = C_SpellBook.GetSpellBookItemInfo(si, spellBank)
+                        if item and item.itemType == spellType and item.spellID then
+                            local isPassive = item.isPassive == true
+                            local spellInfo = C_Spell and C_Spell.GetSpellInfo(item.spellID)
+                            local spellName = item.name or (spellInfo and spellInfo.name)
+                            local texture = item.iconID or (spellInfo and spellInfo.iconID)
+                            if spellName and (not isPassive or not MSB.hidePassive) then
+                                if seen[spellName] then
+                                    seen[spellName].slot = si
+                                    seen[spellName].spellID = item.spellID
+                                    seen[spellName].texture = texture
+                                else
+                                    local entry = {
+                                        name = spellName,
+                                        texture = texture,
+                                        slot = si,
+                                        spellID = item.spellID,
+                                        tabName = tabName,
+                                        isPassive = isPassive,
+                                    }
+                                    table.insert(spells, entry)
+                                    seen[spellName] = entry
+                                end
+                            end
+                        end
+                    end
+                    table.insert(tabs, {
+                        name = tabName,
+                        texture = tabInfo.iconID,
+                        spells = spells,
+                    })
                 end
             end
         end
-        table.insert(tabs, {name = tabName, texture = tabTexture, spells = spells})
+    elseif type(GetNumSpellTabs) == "function" and type(GetSpellTabInfo) == "function" then
+        local numTabs = GetNumSpellTabs()
+        for ti = 1, numTabs do
+            local tabName, tabTexture, offset, numSlots = GetSpellTabInfo(ti)
+            if not (MSB.hideProfessions and PROFESSION_TABS[tabName]) then
+                local spells = {}
+                local seen = {}
+                for si = offset + 1, offset + numSlots do
+                    local spellName = GetSpellBookItemName(si, BOOKTYPE_SPELL)
+                    local spellType = GetSpellBookItemInfo(si, BOOKTYPE_SPELL)
+                    local texture = GetSpellBookItemTexture(si, BOOKTYPE_SPELL)
+                    local isActive = spellType == "SPELL"
+                    local isPassive = spellType == "PASSIVE"
+                    if spellName and (isActive or (not MSB.hidePassive and isPassive)) then
+                        if seen[spellName] then
+                            seen[spellName].slot = si
+                            seen[spellName].texture = texture
+                        else
+                            local entry = {
+                                name = spellName,
+                                texture = texture,
+                                slot = si,
+                                tabName = tabName,
+                                isPassive = isPassive,
+                            }
+                            table.insert(spells, entry)
+                            seen[spellName] = entry
+                        end
+                    end
+                end
+                table.insert(tabs, {name = tabName, texture = tabTexture, spells = spells})
+            end
+        end
+    else
+        UIErrorsFrame:AddMessage(
+            "|cffff0000MacroSpellBook:|r Die Zauberbuch-API dieses Clients wird nicht unterstützt.", 1, 0, 0)
     end
     return tabs
 end
@@ -141,7 +232,7 @@ end
 local templateEditorFrame
 
 local function CreateTemplateEditorFrame()
-    local f = CreateFrame("Frame", "MSBTemplateEditor", UIParent, "BackdropTemplate")
+    local f = CreateFrame("Frame", "MSBTemplateEditor", UIParent, BACKDROP_TEMPLATE)
     f:SetSize(330, 338)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
@@ -310,6 +401,25 @@ local function CreateSpellButton(index)
     hl:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
     hl:SetBlendMode("ADD")
 
+    -- Schul-Label (Tab-Name-Kuerzel) oben links
+    local schoolLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    schoolLabel:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
+    schoolLabel:SetJustifyH("LEFT")
+    schoolLabel:SetShadowOffset(1, -1)
+    schoolLabel:SetShadowColor(0, 0, 0, 1)
+    btn.schoolLabel = schoolLabel
+
+    -- Passiv-Overlay (graues "P")
+    local passiveLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    passiveLabel:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -1, -1)
+    passiveLabel:SetJustifyH("RIGHT")
+    passiveLabel:SetTextColor(0.7, 0.7, 0.7)
+    passiveLabel:SetShadowOffset(1, -1)
+    passiveLabel:SetShadowColor(0, 0, 0, 1)
+    passiveLabel:SetText("P")
+    passiveLabel:Hide()
+    btn.passiveLabel = passiveLabel
+
     btn:SetScript("OnDragStart", function(self)
         if self.spellName then
             CreateAndPickupMacro(self.spellName)
@@ -318,7 +428,11 @@ local function CreateSpellButton(index)
 
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetSpellBookItem(self.spellSlot, BOOKTYPE_SPELL)
+        if self.spellID and GameTooltip.SetSpellByID then
+            GameTooltip:SetSpellByID(self.spellID)
+        else
+            GameTooltip:SetSpellBookItem(self.spellSlot, BOOKTYPE_SPELL)
+        end
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
@@ -375,7 +489,24 @@ local function PopulateSpells()
         local btn = MSB.spellButtons[i]
         btn.spellName = spell.name
         btn.spellSlot = spell.slot
+        btn.spellID = spell.spellID
         btn.icon:SetTexture(spell.texture)
+
+        -- Tab-Name-Kuerzel als Schul-Label
+        if spell.tabName then
+            local short = spell.tabName:sub(1, 3)
+            btn.schoolLabel:SetText(short)
+            btn.schoolLabel:Show()
+        else
+            btn.schoolLabel:Hide()
+        end
+
+        -- Passive-Markierung
+        if spell.isPassive then
+            btn.passiveLabel:Show()
+        else
+            btn.passiveLabel:Hide()
+        end
 
         local col = (i - 1) % ICONS_PER_ROW
         local row = math.floor((i - 1) / ICONS_PER_ROW)
@@ -416,7 +547,7 @@ local function RefreshTabs()
             btn:SetWidth(btnW)
             btn:ClearAllPoints()
             if i == 1 then
-                btn:SetPoint("TOPLEFT", MSB.mainFrame, "TOPLEFT", 14, -122)
+                btn:SetPoint("TOPLEFT", MSB.mainFrame, "TOPLEFT", 14, -148)
             else
                 btn:SetPoint("LEFT", MSB.tabButtons[i - 1], "RIGHT", gap, 0)
             end
@@ -451,6 +582,8 @@ end
 -- Vollstaendige Auffrischung (Tabs + Spells)
 -- ============================================================
 
+local CreateMainFrame
+
 local function FullRefresh()
     MSB.tabs = GetSpellTabs()
     if MSB.activeTab > #MSB.tabs then
@@ -461,10 +594,53 @@ local function FullRefresh()
     PopulateSpells()
 end
 
+local function ShowMacroSpellBook()
+    if not MSB.mainFrame then
+        CreateMainFrame()
+    end
+    MSB.mainFrame:Show()
+end
+
+local function HideMacroSpellBook()
+    if MSB.mainFrame then
+        MSB.mainFrame:Hide()
+    end
+end
+
+local function HookSpellbook()
+    if SpellBookFrame then
+        SpellBookFrame:HookScript("OnShow", ShowMacroSpellBook)
+        SpellBookFrame:HookScript("OnHide", HideMacroSpellBook)
+        return
+    end
+
+    local function HookModernSpellbook()
+        local spellbook = PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame
+        if not spellbook then
+            return
+        end
+        if EventRegistry and EventRegistry.RegisterCallback then
+            EventRegistry:RegisterCallback(
+                "PlayerSpellsFrame.SpellBookFrame.Show", ShowMacroSpellBook, MSB)
+            EventRegistry:RegisterCallback(
+                "PlayerSpellsFrame.SpellBookFrame.Hide", HideMacroSpellBook, MSB)
+        else
+            spellbook:HookScript("OnShow", ShowMacroSpellBook)
+            spellbook:HookScript("OnHide", HideMacroSpellBook)
+        end
+    end
+
+    if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_PlayerSpells", HookModernSpellbook)
+    else
+        HookModernSpellbook()
+    end
+end
+
 -- ============================================================
 -- Template-Dropdown
--- ============================================================
 
+-- ============================================================
 local function TemplateDropdown_Initialize(self, level)
     for name, _ in pairs(GetTemplates()) do
         local info         = UIDropDownMenu_CreateInfo()
@@ -484,8 +660,8 @@ end
 -- Hauptfenster
 -- ============================================================
 
-local function CreateMainFrame()
-    local f = CreateFrame("Frame", "MacroSpellBookFrame", UIParent, "BackdropTemplate")
+CreateMainFrame = function()
+    local f = CreateFrame("Frame", "MacroSpellBookFrame", UIParent, BACKDROP_TEMPLATE)
     f:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
     f:SetPoint("CENTER")
     f:SetFrameStrata("MEDIUM")
@@ -562,14 +738,42 @@ local function CreateMainFrame()
     sep:SetSize(FRAME_WIDTH - 30, 16)
     sep:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -82)
 
+    -- Filter-Checkboxen
+    local chkPassive = CreateFrame("CheckButton", "MSBFilterPassive", f, "UICheckButtonTemplate")
+    chkPassive:SetSize(24, 24)
+    chkPassive:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -96)
+    chkPassive:SetChecked(MSB.hidePassive)
+    local lblPassive = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lblPassive:SetPoint("LEFT", chkPassive, "RIGHT", 0, 0)
+    lblPassive:SetText("Passive")
+
+    local chkProf = CreateFrame("CheckButton", "MSBFilterProf", f, "UICheckButtonTemplate")
+    chkProf:SetSize(24, 24)
+    chkProf:SetPoint("LEFT", lblPassive, "RIGHT", 10, 0)
+    chkProf:SetChecked(MSB.hideProfessions)
+    local lblProf = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lblProf:SetPoint("LEFT", chkProf, "RIGHT", 0, 0)
+    lblProf:SetText("Berufe")
+
+    chkPassive:SetScript("OnClick", function(self)
+        MSB.hidePassive                  = self:GetChecked() and true or false
+        MacroSpellBookDB.hidePassive     = MSB.hidePassive
+        FullRefresh()
+    end)
+    chkProf:SetScript("OnClick", function(self)
+        MSB.hideProfessions                = self:GetChecked() and true or false
+        MacroSpellBookDB.hideProfessions   = MSB.hideProfessions
+        FullRefresh()
+    end)
+
     -- Suchzeile
     local searchLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    searchLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -102)
+    searchLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -124)
     searchLabel:SetText("Suche:")
 
     local searchBox = CreateFrame("EditBox", "MSBSearchBox", f, "InputBoxTemplate")
     searchBox:SetSize(FRAME_WIDTH - 84, 20)
-    searchBox:SetPoint("TOPLEFT", f, "TOPLEFT", 68, -100)
+    searchBox:SetPoint("TOPLEFT", f, "TOPLEFT", 68, -122)
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(60)
     searchBox:SetScript("OnEscapePressed", function(self)
@@ -583,16 +787,16 @@ local function CreateMainFrame()
     end)
     MSB.searchBox = searchBox
 
-    -- Tab-Buttons: Pool, wird befuellt durch RefreshTabs() bei y=-122
+    -- Tab-Buttons: Pool, wird befuellt durch RefreshTabs() bei y=-148
 
     -- Scroll-Frame fuer Zauber
     local scrollW = FRAME_WIDTH - 28
-    local scrollH = FRAME_HEIGHT - 152 - 14
+    local scrollH = FRAME_HEIGHT - 180 - 14
 
     local scrollFrame = CreateFrame(
         "ScrollFrame", "MSBScrollFrame", f, "UIPanelScrollFrameTemplate")
     scrollFrame:SetSize(scrollW, scrollH)
-    scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -152)
+    scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -180)
 
     local scrollChild = CreateFrame("Frame", "MSBScrollChild", scrollFrame)
     scrollChild:SetSize(scrollW, 1)
@@ -605,6 +809,9 @@ local function CreateMainFrame()
     f:SetScript("OnShow", function()
         MSB.searchText = ""
         if MSB.searchBox then MSB.searchBox:SetText("") end
+        -- Checkbox-Zustände beim Oeffnen aktualisieren
+        if MSBFilterPassive  then MSBFilterPassive:SetChecked(MSB.hidePassive)    end
+        if MSBFilterProf     then MSBFilterProf:SetChecked(MSB.hideProfessions)   end
         FullRefresh()
         UIDropDownMenu_SetText(MSB.templateDropdown, MSB.selectedTemplate)
     end)
@@ -632,20 +839,26 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
                 MacroSpellBookDB.templates[k] = v
             end
         end
-        if not MacroSpellBookDB.templates["Start Attack"] then
-            MacroSpellBookDB.templates["Start Attack"] = DEFAULT_TEMPLATES["Start Attack"]
+        for k, v in pairs(DEFAULT_TEMPLATES) do
+            if not MacroSpellBookDB.templates[k] then
+                MacroSpellBookDB.templates[k] = v
+            end
         end
         if type(MacroSpellBookDB.templateMacroNames) ~= "table" then
             MacroSpellBookDB.templateMacroNames = {}
         end
-        if not MacroSpellBookDB.templateMacroNames["Start Attack"] then
-            MacroSpellBookDB.templateMacroNames["Start Attack"] = "."
+        for k in pairs(DEFAULT_TEMPLATES) do
+            if not MacroSpellBookDB.templateMacroNames[k] then
+                MacroSpellBookDB.templateMacroNames[k] = "."
+            end
         end
         if type(MacroSpellBookDB.templatePerChar) ~= "table" then
             MacroSpellBookDB.templatePerChar = {}
         end
-        if MacroSpellBookDB.templatePerChar["Start Attack"] == nil then
-            MacroSpellBookDB.templatePerChar["Start Attack"] = true
+        for k in pairs(DEFAULT_TEMPLATES) do
+            if MacroSpellBookDB.templatePerChar[k] == nil then
+                MacroSpellBookDB.templatePerChar[k] = true
+            end
         end
 
         MSB.selectedTemplate = MacroSpellBookDB.lastTemplate or "Start Attack"
@@ -653,6 +866,16 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             MSB.selectedTemplate          = "Start Attack"
             MacroSpellBookDB.lastTemplate = "Start Attack"
         end
+
+        -- Filter-Flags laden (Default: beide aktiv)
+        if MacroSpellBookDB.hidePassive == nil then
+            MacroSpellBookDB.hidePassive = true
+        end
+        if MacroSpellBookDB.hideProfessions == nil then
+            MacroSpellBookDB.hideProfessions = true
+        end
+        MSB.hidePassive     = MacroSpellBookDB.hidePassive
+        MSB.hideProfessions = MacroSpellBookDB.hideProfessions
 
         print("|cff00ff00MacroSpellBook|r geladen."
             .. " Benutze |cffffcc00/msb|r oder |cffffcc00/macrospellbook|r zum Oeffnen.")
@@ -686,15 +909,4 @@ end
 -- Spellbook-Hook: MSB automatisch mit dem Standard-Zauberbuch oeffnen/schliessen
 -- ============================================================
 
-SpellBookFrame:HookScript("OnShow", function()
-    if not MSB.mainFrame then
-        CreateMainFrame()
-    end
-    MSB.mainFrame:Show()
-end)
-
-SpellBookFrame:HookScript("OnHide", function()
-    if MSB.mainFrame then
-        MSB.mainFrame:Hide()
-    end
-end)
+HookSpellbook()
