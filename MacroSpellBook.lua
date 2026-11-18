@@ -7,6 +7,62 @@ local ADDON_NAME   = "MacroSpellBook"
 local MACRO_PREFIX = "MSB_"
 local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 
+local LOCALIZED_TEXT = {
+    enUS = {
+        DELETE_DEFAULT_TEMPLATE = "|cffff0000MacroSpellBook:|r The default template cannot be deleted.",
+        CHARACTER_MACRO_LIMIT = "|cffff0000MacroSpellBook:|r Character macro limit (%d) reached.",
+        GLOBAL_MACRO_LIMIT = "|cffff0000MacroSpellBook:|r Global macro limit (%d) reached.",
+        SPELLBOOK_API_UNSUPPORTED = "|cffff0000MacroSpellBook:|r This client's spellbook API is not supported.",
+        EDITOR_NAME_LABEL = "Name:",
+        EDITOR_MACRO_NAME_LABEL = "Macro name:",
+        TEMPLATE_LABEL = "Template:",
+        EDITOR_PER_CHARACTER = "Character-specific macro",
+        EDITOR_BODY_LABEL = "Macro body:",
+        EDITOR_BODY_HINT = "|cffaaaaaa%s will be replaced with the spell name|r",
+        SAVE = "Save",
+        CANCEL = "Cancel",
+        NO_TEMPLATE_NAME = "|cffff0000MacroSpellBook:|r No name specified.",
+        NO_TEMPLATE_BODY = "|cffff0000MacroSpellBook:|r No macro body specified.",
+        EDIT_TEMPLATE = "Edit template",
+        NEW_TEMPLATE = "New template",
+        ALL_TABS = "All",
+        DELETE = "Delete",
+        EDIT = "Edit",
+        NEW = "+ New",
+        PASSIVE = "Passive",
+        PROFESSIONS = "Professions",
+        SEARCH = "Search:",
+        ADDON_LOADED = "|cff00ff00MacroSpellBook|r loaded. Use |cffffcc00/msb|r or |cffffcc00/macrospellbook|r to open.",
+    },
+    deDE = {
+        DELETE_DEFAULT_TEMPLATE = "|cffff0000MacroSpellBook:|r Die Standardvorlage kann nicht gelöscht werden.",
+        CHARACTER_MACRO_LIMIT = "|cffff0000MacroSpellBook:|r Charakter-Makrolimit (%d) erreicht.",
+        GLOBAL_MACRO_LIMIT = "|cffff0000MacroSpellBook:|r Globales Makrolimit (%d) erreicht.",
+        SPELLBOOK_API_UNSUPPORTED = "|cffff0000MacroSpellBook:|r Die Zauberbuch-API dieses Clients wird nicht unterstützt.",
+        EDITOR_NAME_LABEL = "Name:",
+        EDITOR_MACRO_NAME_LABEL = "Makroname:",
+        TEMPLATE_LABEL = "Vorlage:",
+        EDITOR_PER_CHARACTER = "Charakter-spezifisches Makro",
+        EDITOR_BODY_LABEL = "Makrotext:",
+        EDITOR_BODY_HINT = "|cffaaaaaa%s wird durch den Zaubernamen ersetzt|r",
+        SAVE = "Speichern",
+        CANCEL = "Abbrechen",
+        NO_TEMPLATE_NAME = "|cffff0000MacroSpellBook:|r Kein Name angegeben.",
+        NO_TEMPLATE_BODY = "|cffff0000MacroSpellBook:|r Kein Makrotext angegeben.",
+        EDIT_TEMPLATE = "Vorlage bearbeiten",
+        NEW_TEMPLATE = "Neue Vorlage",
+        ALL_TABS = "Alle",
+        DELETE = "Löschen",
+        EDIT = "Bearbeiten",
+        NEW = "+ Neu",
+        PASSIVE = "Passiv",
+        PROFESSIONS = "Berufe",
+        SEARCH = "Suche:",
+        ADDON_LOADED = "|cff00ff00MacroSpellBook|r geladen. Benutze |cffffcc00/msb|r oder |cffffcc00/macrospellbook|r zum Öffnen.",
+    },
+}
+local L = LOCALIZED_TEXT[GetLocale()] or LOCALIZED_TEXT.enUS
+
 -- Grid
 local ICON_SIZE     = 40
 local ICON_PADDING  = 6
@@ -78,7 +134,7 @@ local DEFAULT_TEMPLATE_NAMES = {
 local function DeleteTemplate(name)
     if DEFAULT_TEMPLATE_NAMES[name] then
         UIErrorsFrame:AddMessage(
-            "|cffff0000MacroSpellBook:|r Das Standard-Template kann nicht geloescht werden.", 1, 0, 0)
+            L.DELETE_DEFAULT_TEMPLATE, 1, 0, 0)
         return false
     end
     MacroSpellBookDB.templates[name] = nil
@@ -113,11 +169,11 @@ local function CreateAndPickupMacro(spellName)
     local numGlobal, numChar = GetNumMacros()
     if perChar and numChar >= 18 then
         UIErrorsFrame:AddMessage(
-            "|cffff0000MacroSpellBook:|r Charakter-Macro-Limit (18) erreicht.", 1, 0, 0)
+            L.CHARACTER_MACRO_LIMIT:format(18), 1, 0, 0)
         return
     elseif not perChar and numGlobal >= 120 then
         UIErrorsFrame:AddMessage(
-            "|cffff0000MacroSpellBook:|r Globales Macro-Limit (120) erreicht.", 1, 0, 0)
+            L.GLOBAL_MACRO_LIMIT:format(120), 1, 0, 0)
         return
     end
 
@@ -220,7 +276,7 @@ local function GetSpellTabs()
         end
     else
         UIErrorsFrame:AddMessage(
-            "|cffff0000MacroSpellBook:|r Die Zauberbuch-API dieses Clients wird nicht unterstützt.", 1, 0, 0)
+            L.SPELLBOOK_API_UNSUPPORTED, 1, 0, 0)
     end
     return tabs
 end
@@ -259,7 +315,7 @@ local function CreateTemplateEditorFrame()
 
     local nameLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     nameLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -38)
-    nameLabel:SetText("Name:")
+    nameLabel:SetText(L.EDITOR_NAME_LABEL)
 
     f.nameBox = CreateFrame("EditBox", "MSBTemplateEditorName", f, "InputBoxTemplate")
     f.nameBox:SetSize(216, 20)
@@ -269,7 +325,7 @@ local function CreateTemplateEditorFrame()
 
     local macroNameLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     macroNameLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -62)
-    macroNameLabel:SetText("Macro-Name:")
+    macroNameLabel:SetText(L.EDITOR_MACRO_NAME_LABEL)
 
     f.macroNameBox = CreateFrame("EditBox", "MSBTemplateEditorMacroName", f, "InputBoxTemplate")
     f.macroNameBox:SetSize(160, 20)
@@ -284,15 +340,15 @@ local function CreateTemplateEditorFrame()
     f.perCharCheck:SetChecked(true)
     local perCharLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     perCharLabel:SetPoint("LEFT", f.perCharCheck, "RIGHT", 2, 0)
-    perCharLabel:SetText("Charakter-spezifisches Macro")
+    perCharLabel:SetText(L.EDITOR_PER_CHARACTER)
 
     local bodyLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     bodyLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -112)
-    bodyLabel:SetText("Body:")
+    bodyLabel:SetText(L.EDITOR_BODY_LABEL)
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hint:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -130)
-    hint:SetText("|cffaaaaaa%s wird durch den Zaubernamen ersetzt|r")
+    hint:SetText(L.EDITOR_BODY_HINT)
 
     local bodyScroll = CreateFrame(
         "ScrollFrame", "MSBTemplateEditorScroll", f, "UIPanelScrollFrameTemplate")
@@ -310,18 +366,18 @@ local function CreateTemplateEditorFrame()
     local saveBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     saveBtn:SetSize(90, 22)
     saveBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 16)
-    saveBtn:SetText("Speichern")
+    saveBtn:SetText(L.SAVE)
     saveBtn:SetScript("OnClick", function()
         local name = f.nameBox:GetText():match("^%s*(.-)%s*$")
         local body = f.bodyBox:GetText()
         if not name or name == "" then
             UIErrorsFrame:AddMessage(
-                "|cffff0000MacroSpellBook:|r Kein Name angegeben.", 1, 0, 0)
+                L.NO_TEMPLATE_NAME, 1, 0, 0)
             return
         end
         if not body or body == "" then
             UIErrorsFrame:AddMessage(
-                "|cffff0000MacroSpellBook:|r Kein Body angegeben.", 1, 0, 0)
+                L.NO_TEMPLATE_BODY, 1, 0, 0)
             return
         end
         local macroNameRaw = f.macroNameBox:GetText():match("^%s*(.-)%s*$")
@@ -347,7 +403,7 @@ local function CreateTemplateEditorFrame()
     local cancelBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     cancelBtn:SetSize(90, 22)
     cancelBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 16)
-    cancelBtn:SetText("Abbrechen")
+    cancelBtn:SetText(L.CANCEL)
     cancelBtn:SetScript("OnClick", function() f:Hide() end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -363,7 +419,7 @@ local function OpenTemplateEditor(editName)
     end
     local tMacroNames = MacroSpellBookDB and MacroSpellBookDB.templateMacroNames
     if editName then
-        templateEditorFrame.titleText:SetText("Template bearbeiten")
+        templateEditorFrame.titleText:SetText(L.EDIT_TEMPLATE)
         templateEditorFrame.nameBox:SetText(editName)
         templateEditorFrame.macroNameBox:SetText(
             (tMacroNames and tMacroNames[editName]) or ".")
@@ -372,7 +428,7 @@ local function OpenTemplateEditor(editName)
         templateEditorFrame.perCharCheck:SetChecked(isPerChar)
         templateEditorFrame.bodyBox:SetText(GetTemplates()[editName] or "")
     else
-        templateEditorFrame.titleText:SetText("Neues Template")
+        templateEditorFrame.titleText:SetText(L.NEW_TEMPLATE)
         templateEditorFrame.nameBox:SetText("")
         templateEditorFrame.macroNameBox:SetText(".")
         templateEditorFrame.perCharCheck:SetChecked(true)
@@ -552,7 +608,7 @@ local function RefreshTabs()
                 btn:SetPoint("LEFT", MSB.tabButtons[i - 1], "RIGHT", gap, 0)
             end
 
-            btn:SetText(tabIndex == 0 and "Alle" or MSB.tabs[tabIndex].name)
+            btn:SetText(tabIndex == 0 and L.ALL_TABS or MSB.tabs[tabIndex].name)
 
             btn:SetScript("OnClick", function()
                 MSB.activeTab  = tabIndex
@@ -695,7 +751,7 @@ CreateMainFrame = function()
     -- Template-Zeile
     local templateLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     templateLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
-    templateLabel:SetText("Template:")
+    templateLabel:SetText(L.TEMPLATE_LABEL)
 
     local templateDropdown = CreateFrame(
         "Frame", "MSBTemplateDropdown", f, "UIDropDownMenuTemplate")
@@ -709,7 +765,7 @@ CreateMainFrame = function()
     local delBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     delBtn:SetSize(70, 20)
     delBtn:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -58)
-    delBtn:SetText("Loeschen")
+    delBtn:SetText(L.DELETE)
     delBtn:SetScript("OnClick", function()
         if DeleteTemplate(MSB.selectedTemplate) then
             UIDropDownMenu_SetText(MSB.templateDropdown, "Start Attack")
@@ -719,7 +775,7 @@ CreateMainFrame = function()
     local editBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     editBtn:SetSize(80, 20)
     editBtn:SetPoint("LEFT", delBtn, "RIGHT", 4, 0)
-    editBtn:SetText("Bearbeiten")
+    editBtn:SetText(L.EDIT)
     editBtn:SetScript("OnClick", function()
         OpenTemplateEditor(MSB.selectedTemplate)
     end)
@@ -727,7 +783,7 @@ CreateMainFrame = function()
     local newBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     newBtn:SetSize(66, 20)
     newBtn:SetPoint("LEFT", editBtn, "RIGHT", 4, 0)
-    newBtn:SetText("+ Neu")
+    newBtn:SetText(L.NEW)
     newBtn:SetScript("OnClick", function()
         OpenTemplateEditor(nil)
     end)
@@ -745,7 +801,7 @@ CreateMainFrame = function()
     chkPassive:SetChecked(MSB.hidePassive)
     local lblPassive = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     lblPassive:SetPoint("LEFT", chkPassive, "RIGHT", 0, 0)
-    lblPassive:SetText("Passive")
+    lblPassive:SetText(L.PASSIVE)
 
     local chkProf = CreateFrame("CheckButton", "MSBFilterProf", f, "UICheckButtonTemplate")
     chkProf:SetSize(24, 24)
@@ -753,7 +809,7 @@ CreateMainFrame = function()
     chkProf:SetChecked(MSB.hideProfessions)
     local lblProf = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     lblProf:SetPoint("LEFT", chkProf, "RIGHT", 0, 0)
-    lblProf:SetText("Berufe")
+    lblProf:SetText(L.PROFESSIONS)
 
     chkPassive:SetScript("OnClick", function(self)
         MSB.hidePassive                  = self:GetChecked() and true or false
@@ -769,7 +825,7 @@ CreateMainFrame = function()
     -- Suchzeile
     local searchLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     searchLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -124)
-    searchLabel:SetText("Suche:")
+    searchLabel:SetText(L.SEARCH)
 
     local searchBox = CreateFrame("EditBox", "MSBSearchBox", f, "InputBoxTemplate")
     searchBox:SetSize(FRAME_WIDTH - 84, 20)
@@ -877,8 +933,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         MSB.hidePassive     = MacroSpellBookDB.hidePassive
         MSB.hideProfessions = MacroSpellBookDB.hideProfessions
 
-        print("|cff00ff00MacroSpellBook|r geladen."
-            .. " Benutze |cffffcc00/msb|r oder |cffffcc00/macrospellbook|r zum Oeffnen.")
+        print(L.ADDON_LOADED)
 
     elseif event == "SPELLS_CHANGED" then
         if MSB.mainFrame and MSB.mainFrame:IsShown() then
